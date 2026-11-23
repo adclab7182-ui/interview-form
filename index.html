@@ -21,7 +21,6 @@
     --r: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
   body {
     font-family: 'Noto Sans KR', system-ui, sans-serif;
     background: var(--bg);
@@ -76,8 +75,6 @@
 
   .slot-info { flex: 1; min-width: 0; }
   .slot-label { font-size: .88rem; font-weight: 600; }
-  .slot-sub   { font-size: .72rem; margin-top: .15rem; color: var(--fg-muted); }
-  .slot.taken .slot-sub { color: var(--taken); }
 
   .tag {
     flex-shrink: 0; font-size: .62rem; font-weight: 700; letter-spacing: .04em;
@@ -153,10 +150,29 @@
 </div>
 
 <script>
-  // ★ 여기에 본인 Google Apps Script 배포 URL 붙여넣기 ★
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbwqda7ju_CHDHNzjNZzZyj6qbciOrOJsGWU_RicX2OVnXaptqYJG5mlNPuO2EqlThZFCw/exec';
 
   let slots = [], sel = null, busy = false;
+
+  // JSONP 호출 (CORS 우회)
+  function jsonp(url) {
+    return new Promise((resolve, reject) => {
+      const cb = '__cb_' + Math.random().toString(36).slice(2);
+      const script = document.createElement('script');
+      const timer = setTimeout(() => {
+        cleanup(); reject(new Error('timeout'));
+      }, 15000);
+      function cleanup() {
+        clearTimeout(timer);
+        delete window[cb];
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cb] = (data) => { cleanup(); resolve(data); };
+      script.onerror = () => { cleanup(); reject(new Error('load error')); };
+      script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+      document.head.appendChild(script);
+    });
+  }
 
   function setAlert(msg, type) {
     const el = document.getElementById('alertBox');
@@ -184,9 +200,7 @@
       div.className = `slot ${cls}`;
       div.innerHTML = `
         <div class="dot"></div>
-        <div class="slot-info">
-          <div class="slot-label">${s.label}</div>
-        </div>
+        <div class="slot-info"><div class="slot-label">${s.label}</div></div>
         <span class="tag ${tagCls}">${tagTxt}</span>`;
       if (!s.booked) {
         div.addEventListener('click', () => { sel = s.id; setAlert('', ''); render(); sync(); });
@@ -227,9 +241,7 @@
 
     try {
       const url = `${GAS_URL}?action=book&slotId=${encodeURIComponent(sel)}&name=${encodeURIComponent(name)}&contact=${encodeURIComponent(contact)}`;
-      const res = await fetch(url);
-      const data = await res.json();
-
+      const data = await jsonp(url);
       if (data.ok) {
         showSuccess(data.label, name);
       } else {
@@ -246,8 +258,7 @@
 
   async function loadSlots() {
     try {
-      const res = await fetch(`${GAS_URL}?action=slots`);
-      slots = await res.json();
+      slots = await jsonp(`${GAS_URL}?action=slots`);
       render();
     } catch(e) {
       document.getElementById('slotsList').innerHTML =
